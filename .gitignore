@@ -1,0 +1,17 @@
+# 创建.gitignore文件
+cat > .gitignore << EOF
+# Docker构建临时文件
+.dockerignore
+.DS_Store
+*.swp
+*.tmp
+*.log
+.specstory/
+
+# 可能的大型二进制文件
+*.jar
+!mysql-connector-java-8.0.22.jar
+
+# 本地配置文件（如有）
+local-config/
+EOF

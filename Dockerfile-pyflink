@@ -1,0 +1,68 @@
+FROM flink:1.20.1-scala_2.12-java8 AS builder
+
+# 设置架构为AMD64
+ENV ARCH=x86_64
+
+# 使用多个国内镜像源提高可靠性
+RUN set -eux; \
+    # 尝试多个镜像源以提高成功率
+    { \
+        echo 'deb http://mirrors.aliyun.com/ubuntu/ jammy main restricted universe multiverse'; \
+        echo 'deb http://mirrors.aliyun.com/ubuntu/ jammy-updates main restricted universe multiverse'; \
+        echo 'deb http://mirrors.aliyun.com/ubuntu/ jammy-backports main restricted universe multiverse'; \
+        echo 'deb http://mirrors.aliyun.com/ubuntu/ jammy-security main restricted universe multiverse'; \
+    } > /etc/apt/sources.list.new && \
+    mv /etc/apt/sources.list.new /etc/apt/sources.list || true; \
+    # 设置超时和重试
+    echo 'Acquire::http::Timeout "120";' > /etc/apt/apt.conf.d/99timeout; \
+    echo 'Acquire::Retries "3";' >> /etc/apt/apt.conf.d/99timeout
+
+# 安装Python环境（增加重试逻辑）
+RUN apt-get update -y || (sleep 3 && apt-get update -y) && \
+    apt-get install -y --no-install-recommends \
+        python3-minimal \
+        python3-pip \
+        python3-setuptools \
+        python3-wheel && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+# 配置pip使用多个国内镜像源（按优先级尝试）
+RUN mkdir -p ~/.pip && \
+    echo "[global]" > ~/.pip/pip.conf && \
+    echo "index-url=https://pypi.tuna.tsinghua.edu.cn/simple" >> ~/.pip/pip.conf && \
+    echo "extra-index-url=https://mirrors.aliyun.com/pypi/simple/" >> ~/.pip/pip.conf && \
+    echo "timeout=120" >> ~/.pip/pip.conf
+
+# 安装必要的Python库（增加超时和重试）
+RUN pip3 install --no-cache-dir --timeout 120 --retries 3 \
+    py4j==0.10.9.7 \
+    numpy \
+    pandas
+
+# 最终镜像
+FROM flink:1.20.1-scala_2.12-java8
+
+# 设置架构为AMD64
+ENV ARCH=x86_64
+
+# 复制Python环境
+COPY --from=builder /usr/bin/python3 /usr/bin/python3
+COPY --from=builder /usr/bin/pip3 /usr/bin/pip3
+COPY --from=builder /usr/lib/python3 /usr/lib/python3
+# AMD64架构下通常是python3.10而不是特定架构目录
+COPY --from=builder /usr/local/lib/python3.10 /usr/local/lib/python3.10
+RUN ln -s /usr/bin/python3 /usr/bin/python
+
+# 添加MySQL驱动包到Flink的lib目录
+COPY mysql-connector-java-8.0.22.jar $FLINK_HOME/lib/
+
+# 设置工作目录
+WORKDIR /opt/flink
+
+# 创建启动脚本
+RUN echo '#!/bin/bash\necho "Flink with MySQL driver ready."\nexec "$@"' > /docker-entrypoint.sh && \
+    chmod +x /docker-entrypoint.sh
+
+ENTRYPOINT ["/docker-entrypoint.sh"]
+CMD ["bash"]
