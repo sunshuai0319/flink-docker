@@ -55,14 +55,4 @@ COPY --from=builder /usr/local/lib/python3.10 /usr/local/lib/python3.10
 RUN ln -s /usr/bin/python3 /usr/bin/python
 
 # 添加MySQL驱动包到Flink的lib目录
-COPY mysql-connector-java-8.0.22.jar $FLINK_HOME/lib/
-
-# 设置工作目录
-WORKDIR /opt/flink
-
-# 创建启动脚本
-RUN echo '#!/bin/bash\necho "Flink with MySQL driver ready."\nexec "$@"' > /docker-entrypoint.sh && \
-    chmod +x /docker-entrypoint.sh
-
-ENTRYPOINT ["/docker-entrypoint.sh"]
-CMD ["bash"]
+COPY mysql-connector-java-8.0.28.jar $FLINK_HOME/lib/
